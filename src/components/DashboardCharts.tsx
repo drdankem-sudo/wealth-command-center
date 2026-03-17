@@ -54,7 +54,7 @@ export default function DashboardCharts({
               <Tooltip 
                 contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', color: '#f8fafc' }}
                 itemStyle={{ color: '#818cf8' }}
-                formatter={(value: number) => [`$${value.toLocaleString()}`, 'Net Worth']}
+                formatter={(value: any) => [`$${Number(value || 0).toLocaleString()}`, 'Net Worth']}
               />
               <Area type="monotone" dataKey="net_worth" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
             </AreaChart>
