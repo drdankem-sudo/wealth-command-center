@@ -6,7 +6,7 @@ import DashboardCharts from '../components/DashboardCharts';
 import AddAssetForm from '../components/AddAssetForm';
 import AssetLedger from '../components/AssetLedger';
 import LogoutButton from '../components/LogoutButton';
-import { createClient } from '../utils/supabase';
+import { createClient } from '@/utils/supabase-client';
 
 // Tell Next.js to fetch fresh data every 30 seconds
 export const revalidate = 30; 
