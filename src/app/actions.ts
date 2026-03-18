@@ -1,7 +1,7 @@
 // src/app/actions.ts
 "use server";
 
-import { createClient } from '../utils/supabase'; // 🚨 UPGRADED TO USE YOUR SECURE COOKIE CLIENT
+import { createClient } from '../utils/supabase-server';
 import { revalidatePath } from 'next/cache';
 
 // --- FUNCTION 1: ADD (AND CONSOLIDATE) ASSET ---
