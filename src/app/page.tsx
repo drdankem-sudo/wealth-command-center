@@ -1,4 +1,5 @@
 // src/app/page.tsx
+import MfaEnroll from '@/components/MfaEnroll';
 import { Wallet, TrendingUp, Landmark } from 'lucide-react';
 import DashboardCharts from '../components/DashboardCharts';
 import AddAssetForm from '../components/AddAssetForm';
@@ -119,7 +120,12 @@ export default async function Dashboard() {
 
       {/* Lower Section: The Smart Ledger */}
       <AssetLedger assets={assetsData || []} />
-
+<div className="mt-12 border-t border-slate-800 pt-8">
+  <h2 className="text-xl font-bold text-slate-100 mb-6">Vault Security</h2>
+  <div className="max-w-md">
+    <MfaEnroll />
+  </div>
+</div>
     </div>
   );
 }
