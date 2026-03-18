@@ -9,7 +9,7 @@ import LogoutButton from '../components/LogoutButton';
 import { createClient } from '@/utils/supabase-client';
 
 // Tell Next.js to fetch fresh data every 30 seconds
-export const revalidate = 30; 
+
 
 export default async function Dashboard() {
   
