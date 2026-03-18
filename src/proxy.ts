@@ -1,6 +1,6 @@
 // src/proxy.ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
