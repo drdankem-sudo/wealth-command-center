@@ -45,26 +45,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 3. MFA LOGIC: Check if the user has 2FA verified
+ // 3. MFA LOGIC: Check if the user has 2FA verified
   if (user) {
-    // List the 2FA factors for this user
     const { data: factors } = await supabase.auth.mfa.listFactors();
     const isMfaEnrolled = factors?.all.some((f) => f.status === 'verified');
 
-    // Get the "AAL" (Authenticator Assurance Level)
-    // aal1 = password only | aal2 = password + 2FA code entered
-    const { data: authData } = await supabase.auth.getAuthenticatorAssuranceLevel();
-    const isMfaVerified = authData?.currentLevel === 'aal2';
+    // ✅ THE FIX: Explicitly await the assurance level check
+    const mfaStatus = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const isMfaVerified = mfaStatus.data?.currentLevel === 'aal2';
 
-    // If they have 2FA enabled but haven't entered the code (aal1), 
-    // and they aren't already on the MFA page... bounce them to /login/mfa
     if (isMfaEnrolled && !isMfaVerified && url.pathname !== '/login/mfa') {
       url.pathname = '/login/mfa';
       return NextResponse.redirect(url);
     }
 
-    // If they ARE fully verified (aal2) or don't have MFA, but try to go to /login,
-    // send them to the dashboard
     if ((!isMfaEnrolled || isMfaVerified) && url.pathname === '/login') {
       url.pathname = '/';
       return NextResponse.redirect(url);
