@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from 'react';
-import { createClient } from '../../../utils/supabase/client';
+import { createClient } from '../../../utils/supabase';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, Loader2, Smartphone } from 'lucide-react';
 
