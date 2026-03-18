@@ -1,5 +1,5 @@
 // src/app/login/page.tsx
-import { createClient } from '../../utils/supabase';
+import { createClient } from '../../utils/supabase-server';
 import { redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
 
