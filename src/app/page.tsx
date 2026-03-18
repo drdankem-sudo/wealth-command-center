@@ -1,3 +1,4 @@
+"use client";
 // src/app/page.tsx
 import MfaEnroll from '@/components/MfaEnroll';
 import { Wallet, TrendingUp, Landmark } from 'lucide-react';
