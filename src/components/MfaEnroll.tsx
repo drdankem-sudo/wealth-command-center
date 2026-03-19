@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '../utils/supabase-client'; // Ensure this points to your browser client
 import { QRCodeSVG } from 'qrcode.react';
 import { ShieldCheck, Smartphone, Loader2 } from 'lucide-react';
@@ -14,6 +14,14 @@ export default function MfaEnroll() {
   const [loading, setLoading] = useState(false);
 
   const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      if (data?.totp?.some(f => f.status === 'verified')) {
+        setSuccess(true);
+      }
+    });
+  }, [supabase]);
 
   const startEnrollment = async () => {
     setLoading(true);
