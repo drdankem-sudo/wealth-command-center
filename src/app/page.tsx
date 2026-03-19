@@ -1,4 +1,3 @@
-"use client";
 // src/app/page.tsx
 import MfaEnroll from '@/components/MfaEnroll';
 import { Wallet, TrendingUp, Landmark } from 'lucide-react';
@@ -6,7 +5,7 @@ import DashboardCharts from '../components/DashboardCharts';
 import AddAssetForm from '../components/AddAssetForm';
 import AssetLedger from '../components/AssetLedger';
 import LogoutButton from '../components/LogoutButton';
-import { createClient } from '@/utils/supabase-client';
+import { createClient } from '@/utils/supabase-server';
 
 // Tell Next.js to fetch fresh data every 30 seconds
 
