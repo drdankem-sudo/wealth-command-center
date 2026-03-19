@@ -63,7 +63,7 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
             </div>
           )
         ) : (
-          `$${Number(asset.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          `$${Number(asset.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         )}
       </td>
 

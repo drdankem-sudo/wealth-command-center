@@ -17,6 +17,16 @@ export default function MfaEnroll() {
 
   const startEnrollment = async () => {
     setLoading(true);
+
+    // Clean up any existing unverified factors to prevent naming collisions
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    if (factors) {
+      const unverifiedTotp = factors.totp.filter(f => f.status !== 'verified');
+      for (const factor of unverifiedTotp) {
+        await supabase.auth.mfa.unenroll({ factorId: factor.id });
+      }
+    }
+
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: 'totp',
       issuer: 'WealthCommand',
