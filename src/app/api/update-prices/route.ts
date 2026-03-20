@@ -9,14 +9,12 @@ const supabase = createClient(
 // ─── SECURITY: Verify request is from Vercel Cron or authorized caller ───
 function isAuthorized(request: NextRequest): boolean {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false; // Deny all if secret not configured
-
+  if (!cronSecret) return false;
   const authHeader = request.headers.get('authorization');
   return authHeader === `Bearer ${cronSecret}`;
 }
 
 export async function GET(request: NextRequest) {
-  // ─── AUTH GATE: Block unauthorized callers ───
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -60,7 +58,6 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Update BTC in live_prices table for dashboard card
       if (data.bitcoin?.usd) {
         await supabase.from('live_prices').upsert([
           { ticker_symbol: 'BTC', current_price: data.bitcoin.usd, last_updated: new Date().toISOString() }
@@ -68,7 +65,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ─── 2. UPDATE US EQUITIES via Finnhub (key in header, not URL) ───
+    // ─── 2. UPDATE US EQUITIES via Finnhub + auto-update dividend yield ───
     const { data: usStocks } = await supabase
       .from('assets')
       .select('id, ticker_symbol, shares')
@@ -78,14 +75,25 @@ export async function GET(request: NextRequest) {
     if (usStocks && usStocks.length > 0 && process.env.FINNHUB_API_KEY) {
       for (const stock of usStocks) {
         try {
-          const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(stock.ticker_symbol!)}`, {
+          // Fetch price
+          const quoteRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(stock.ticker_symbol!)}`, {
             headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
           });
-          const quote = await res.json();
+          const quote = await quoteRes.json();
+
+          // Fetch dividend yield
+          const metricRes = await fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(stock.ticker_symbol!)}&metric=all`, {
+            headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
+          });
+          const metric = await metricRes.json();
+          const dividendYield = metric?.metric?.dividendYieldIndicatedAnnual || null;
+
           if (quote.c && stock.shares > 0) {
-            await supabase.from('assets').update({ balance: quote.c * stock.shares }).eq('id', stock.id);
+            const updateFields: Record<string, number> = { balance: quote.c * stock.shares };
+            if (dividendYield !== null) updateFields.annual_yield = dividendYield;
+            await supabase.from('assets').update(updateFields).eq('id', stock.id);
             livePricedIds.add(stock.id);
-            console.log(`US Stock ${stock.ticker_symbol}: ${stock.shares} @ $${quote.c}`);
+            console.log(`US Stock ${stock.ticker_symbol}: ${stock.shares} @ $${quote.c}, yield=${dividendYield ?? 'N/A'}%`);
           }
         } catch (err) {
           console.error(`Failed to price ${stock.ticker_symbol}:`, err);
@@ -160,7 +168,6 @@ export async function GET(request: NextRequest) {
           const res = await fetch(`https://commodities-api.com/api/latest?access_key=${process.env.COMMODITIES_API_KEY}&base=USD&symbols=${encodeURIComponent(commodity.ticker_symbol!)}`);
           const data = await res.json();
           if (data?.data?.rates?.[commodity.ticker_symbol!] && commodity.shares > 0) {
-            // commodities-api returns 1/price (units per USD), so invert
             const price = 1 / data.data.rates[commodity.ticker_symbol!];
             await supabase.from('assets').update({ balance: price * commodity.shares }).eq('id', commodity.id);
             livePricedIds.add(commodity.id);
@@ -172,14 +179,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ─── 6. APPRECIATION ENGINE for illiquid/non-API assets ───
+    // ─── 6. APPRECIATION / DEPRECIATION ENGINE ───
+    // Works for ALL assets: positive growth = appreciation, negative = depreciation
     const { data: allAssets } = await supabase
       .from('assets')
       .select('id, balance, annual_growth_rate, annual_yield, pending_yield_cash');
 
     if (allAssets) {
       for (const asset of allAssets) {
-        if (livePricedIds.has(asset.id)) continue; // skip live-priced assets
+        if (livePricedIds.has(asset.id)) continue;
 
         const growthRate = Number(asset.annual_growth_rate || 0);
         const yieldRate = Number(asset.annual_yield || 0);
@@ -187,13 +195,14 @@ export async function GET(request: NextRequest) {
         let pendingYield = Number(asset.pending_yield_cash || 0);
         let changed = false;
 
-        // Daily compound growth: balance *= (1 + rate/100)^(1/365)
-        if (growthRate > 0 && balance > 0) {
+        // Daily compound growth/depreciation: balance *= (1 + rate/100)^(1/365)
+        if (growthRate !== 0 && balance > 0) {
           balance *= Math.pow(1 + growthRate / 100, 1 / 365);
+          if (balance < 0) balance = 0; // Floor at zero
           changed = true;
         }
 
-        // Accrue daily yield
+        // Accrue daily yield (only for positive-yield assets)
         if (yieldRate > 0 && balance > 0) {
           pendingYield += balance * (yieldRate / 100) / 365;
           changed = true;
@@ -204,18 +213,49 @@ export async function GET(request: NextRequest) {
             balance: Math.round(balance * 100) / 100,
             pending_yield_cash: Math.round(pendingYield * 100) / 100
           }).eq('id', asset.id);
-          console.log(`Appreciated asset ${asset.id}: balance=$${balance.toFixed(2)}, yield=$${pendingYield.toFixed(2)}`);
+          console.log(`Asset ${asset.id}: balance=$${balance.toFixed(2)}, yield=$${pendingYield.toFixed(2)}`);
         }
       }
     }
 
-    // ─── 7. RECORD DAILY WEALTH SNAPSHOT (per user) ───
+    // ─── 7. LIABILITY INTEREST ACCRUAL ───
+    // Daily interest: balance += balance * (APR/100) / 365
+    const { data: allLiabilities } = await supabase
+      .from('liabilities')
+      .select('id, balance, interest_rate');
+
+    if (allLiabilities) {
+      for (const liability of allLiabilities) {
+        const rate = Number(liability.interest_rate || 0);
+        let balance = Number(liability.balance || 0);
+
+        if (rate > 0 && balance > 0) {
+          const dailyInterest = balance * (rate / 100) / 365;
+          balance += dailyInterest;
+          await supabase.from('liabilities').update({
+            balance: Math.round(balance * 100) / 100
+          }).eq('id', liability.id);
+          console.log(`Liability ${liability.id}: +$${dailyInterest.toFixed(2)} interest, new balance=$${balance.toFixed(2)}`);
+        }
+      }
+    }
+
+    // ─── 8. RECORD DAILY WEALTH SNAPSHOT (assets - liabilities) ───
     const { data: snapshotAssets } = await supabase.from('assets').select('user_id, balance');
+    const { data: snapshotLiabilities } = await supabase.from('liabilities').select('user_id, balance');
+
     if (snapshotAssets) {
       const userTotals: Record<string, number> = {};
       for (const a of snapshotAssets) {
         userTotals[a.user_id] = (userTotals[a.user_id] || 0) + Number(a.balance || 0);
       }
+      // Subtract liabilities
+      if (snapshotLiabilities) {
+        for (const l of snapshotLiabilities) {
+          userTotals[l.user_id] = (userTotals[l.user_id] || 0) - Number(l.balance || 0);
+        }
+      }
+
       const today = new Date().toISOString().split('T')[0];
       for (const [userId, total] of Object.entries(userTotals)) {
         await supabase.from('net_worth_history').upsert([
@@ -228,7 +268,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error: unknown) {
     console.error("Sync Failed:", error);
-    // Generic error — never leak internals
     return NextResponse.json({ error: 'Internal sync error' }, { status: 500 });
   }
 }

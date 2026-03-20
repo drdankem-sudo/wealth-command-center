@@ -8,10 +8,17 @@ import { z } from 'zod';
 // ─── INPUT VALIDATION SCHEMAS ───
 const VALID_ASSET_CLASSES = [
   'Securities', 'Crypto', 'NSE Equities', 'Gold', 'Commodities',
-  'Real estate', 'Farm/ranch', 'VC fund', 'Bonds/Tbills', 'Sacco/MMF', 'Cash'
+  'Real estate', 'Farm/ranch', 'VC fund', 'Bonds/Tbills', 'Sacco/MMF', 'Cash',
+  'Vehicle', 'Equipment'
 ] as const;
 
 const TICKER_REGEX = /^[A-Z0-9._-]{1,12}$/;
+
+// Default depreciation rates for auto-depreciating asset classes
+const DEFAULT_DEPRECIATION: Record<string, number> = {
+  'Vehicle': -15,    // -15% per year
+  'Equipment': -25,  // -25% per year
+};
 
 const AddAssetSchema = z.object({
   name: z.string().min(1, 'Name required').max(100, 'Name too long'),
@@ -19,7 +26,7 @@ const AddAssetSchema = z.object({
   ticker: z.string().regex(TICKER_REGEX, 'Invalid ticker format').optional().or(z.literal('')),
   shares: z.number().min(0).max(1_000_000_000).optional(),
   balance: z.number().min(0).max(100_000_000_000).optional(),
-  growthRate: z.number().min(0).max(100).optional(),
+  growthRate: z.number().min(-100).max(100).optional(), // negative = depreciation
   yieldRate: z.number().min(0).max(100).optional(),
   targetAllocation: z.number().min(0).max(100).optional(),
 });
@@ -36,16 +43,27 @@ const UpdateSchema = z.object({
   assetClass: z.string().max(30).optional().or(z.literal('')),
 });
 
-// ─── SAFE FETCH: encodeURIComponent on all dynamic URL segments ───
-async function fetchFinnhub(ticker: string): Promise<number | null> {
-  if (!process.env.FINNHUB_API_KEY) return null;
+// ─── SAFE FETCH HELPERS ───
+async function fetchFinnhub(ticker: string): Promise<{ price: number | null; dividendYield: number | null }> {
+  if (!process.env.FINNHUB_API_KEY) return { price: null, dividendYield: null };
   try {
-    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}`, {
-      headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
-    });
-    const data = await res.json();
-    return data?.c || null;
-  } catch { return null; }
+    // Fetch quote + profile2 for dividend yield
+    const [quoteRes, profileRes] = await Promise.all([
+      fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}`, {
+        headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
+      }),
+      fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(ticker)}&metric=all`, {
+        headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
+      }),
+    ]);
+    const quote = await quoteRes.json();
+    const profile = await profileRes.json();
+
+    return {
+      price: quote?.c || null,
+      dividendYield: profile?.metric?.dividendYieldIndicatedAnnual || null,
+    };
+  } catch { return { price: null, dividendYield: null }; }
 }
 
 async function fetchCrypto(ticker: string): Promise<number | null> {
@@ -82,16 +100,6 @@ async function fetchGold(): Promise<number | null> {
   } catch { return null; }
 }
 
-async function getPrice(assetClass: string, ticker: string): Promise<number | null> {
-  switch (assetClass) {
-    case 'Securities': return fetchFinnhub(ticker);
-    case 'Crypto': return fetchCrypto(ticker);
-    case 'NSE Equities': return fetchNSE(ticker);
-    case 'Gold': return fetchGold();
-    default: return null;
-  }
-}
-
 // --- FUNCTION 1: ADD (AND CONSOLIDATE) ASSET ---
 export async function addAsset(formData: FormData) {
   const supabase = await createClient();
@@ -100,13 +108,18 @@ export async function addAsset(formData: FormData) {
   if (!user) return { error: 'unauthorized' };
 
   // Validate input
+  const rawGrowthRate = formData.get('growthRate');
+  const assetClassRaw = formData.get('assetClass') as string;
+
   const raw = {
     name: (formData.get('name') as string || '').trim(),
-    assetClass: formData.get('assetClass') as string,
+    assetClass: assetClassRaw,
     ticker: ((formData.get('ticker') as string) || '').toUpperCase().trim(),
     shares: Number(formData.get('shares')) || 0,
     balance: Number(formData.get('balance')) || 0,
-    growthRate: Number(formData.get('growthRate')) || 0,
+    growthRate: rawGrowthRate !== null && rawGrowthRate !== ''
+      ? Number(rawGrowthRate)
+      : (DEFAULT_DEPRECIATION[assetClassRaw] ?? 0),
     yieldRate: Number(formData.get('yieldRate')) || 0,
     targetAllocation: Number(formData.get('targetAllocation')) || 0,
   };
@@ -121,6 +134,7 @@ export async function addAsset(formData: FormData) {
   let balance = 0;
   let ticker_symbol: string | null = ticker || null;
   let shares = incomingShares || 0;
+  let autoYield = yieldRate || 0;
 
   if (assetClass === 'Securities' || assetClass === 'Crypto' || assetClass === 'NSE Equities') {
     if (!ticker_symbol) return { error: 'Ticker symbol required for market assets' };
@@ -135,43 +149,50 @@ export async function addAsset(formData: FormData) {
     const existingAsset = existingAssets && existingAssets.length > 0 ? existingAssets[0] : null;
     shares = existingAsset ? existingAsset.shares + (incomingShares || 0) : (incomingShares || 0);
 
-    // AUTO-PRICE
-    const price = await getPrice(assetClass, ticker_symbol);
-    if (price && shares > 0) balance = price * shares;
+    // AUTO-PRICE + AUTO-YIELD (Securities)
+    if (assetClass === 'Securities') {
+      const { price, dividendYield } = await fetchFinnhub(ticker_symbol);
+      if (price && shares > 0) balance = price * shares;
+      if (dividendYield && !autoYield) autoYield = dividendYield;
+    } else if (assetClass === 'Crypto') {
+      const price = await fetchCrypto(ticker_symbol);
+      if (price && shares > 0) balance = price * shares;
+    } else if (assetClass === 'NSE Equities') {
+      const price = await fetchNSE(ticker_symbol);
+      if (price && shares > 0) balance = price * shares;
+    }
 
     if (existingAsset) {
-      const { error } = await supabase.from('assets').update({ shares, balance }).eq('id', existingAsset.id);
+      const updateFields: Record<string, number> = { shares, balance };
+      if (autoYield) updateFields.annual_yield = autoYield;
+      const { error } = await supabase.from('assets').update(updateFields).eq('id', existingAsset.id);
       if (error) return { error: 'update_failed' };
     } else {
       const { error } = await supabase.from('assets').insert([{
         user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
-        target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: yieldRate
+        target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: autoYield
       }]);
       if (error) return { error: 'insert_failed' };
     }
 
   } else if (assetClass === 'Gold') {
     ticker_symbol = 'XAU';
-
-    // Fetch live price
     const price = await fetchGold();
     if (price && shares > 0) balance = price * shares;
-
-    // Fallback to manual balance
     if (balance === 0) balance = manualBalance || 0;
 
     const { error } = await supabase.from('assets').insert([{
       user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
-      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: yieldRate
+      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: autoYield
     }]);
     if (error) return { error: 'insert_failed' };
 
   } else {
-    // Manual entry for Real Estate, Farms, Bonds, etc.
+    // Manual entry: Real Estate, Farms, Bonds, Cash, Vehicle, Equipment, etc.
     balance = manualBalance || 0;
     const { error } = await supabase.from('assets').insert([{
       user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
-      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: yieldRate
+      target_allocation: targetAllocation, annual_growth_rate: growthRate ?? 0, annual_yield: autoYield
     }]);
     if (error) return { error: 'insert_failed' };
   }
@@ -218,8 +239,19 @@ export async function updateAsset(formData: FormData) {
   if (ticker && ticker !== 'undefined' && ticker !== 'null' && shares !== undefined) {
     updateData.shares = shares;
 
-    const price = await getPrice(assetClass || '', ticker.toUpperCase());
-    if (price) updateData.balance = price * shares;
+    if (assetClass === 'Securities') {
+      const { price } = await fetchFinnhub(ticker.toUpperCase());
+      if (price) updateData.balance = price * shares;
+    } else if (assetClass === 'Crypto') {
+      const price = await fetchCrypto(ticker.toUpperCase());
+      if (price) updateData.balance = price * shares;
+    } else if (assetClass === 'NSE Equities') {
+      const price = await fetchNSE(ticker.toUpperCase());
+      if (price) updateData.balance = price * shares;
+    } else if (assetClass === 'Gold') {
+      const price = await fetchGold();
+      if (price) updateData.balance = price * shares;
+    }
   } else if (balance !== undefined) {
     updateData.balance = balance;
   }

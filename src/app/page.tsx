@@ -1,10 +1,13 @@
 // src/app/page.tsx
 import MfaEnroll from '@/components/MfaEnroll';
-import { Wallet, TrendingUp, Landmark, DollarSign, Settings } from 'lucide-react';
+import { Wallet, TrendingUp, Landmark, DollarSign, Settings, AlertTriangle, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
 import DashboardCharts from '../components/DashboardCharts';
 import AddAssetForm from '../components/AddAssetForm';
+import AddLiabilityForm from '../components/AddLiabilityForm';
 import AssetLedger from '../components/AssetLedger';
+import LiabilityLedger from '../components/LiabilityLedger';
+import EscapeVelocity from '../components/EscapeVelocity';
 import LogoutButton from '../components/LogoutButton';
 import { createClient } from '@/utils/supabase-server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
@@ -30,6 +33,11 @@ export default async function Dashboard() {
     .from('assets')
     .select('id, name, asset_class, ticker_symbol, shares, target_allocation, balance, annual_growth_rate, annual_yield, pending_yield_cash');
 
+  // All user liabilities
+  const { data: liabilitiesData } = await supabase
+    .from('liabilities')
+    .select('id, name, liability_type, balance, interest_rate, monthly_payment');
+
   // Historical net worth
   const { data: rawHistoryData } = await supabase
     .from('net_worth_history')
@@ -48,7 +56,9 @@ export default async function Dashboard() {
   const btcPrice = btcData ? btcData.current_price : 0;
   const formattedBtcPrice = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(btcPrice);
 
-  const totalNetWorth = assetsData?.reduce((sum, a) => sum + Number(a.balance || 0), 0) || 0;
+  const totalAssets = assetsData?.reduce((sum, a) => sum + Number(a.balance || 0), 0) || 0;
+  const totalLiabilities = liabilitiesData?.reduce((sum, l) => sum + Number(l.balance || 0), 0) || 0;
+  const totalNetWorth = totalAssets - totalLiabilities;
   const formattedNetWorth = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalNetWorth);
 
   const illiquidClasses = ['Real estate', 'Farm/ranch', 'VC fund', 'Gold', 'Commodities', 'Bonds/Tbills', 'Sacco/MMF', 'Cash'];
@@ -60,6 +70,24 @@ export default async function Dashboard() {
   const annualYieldIncome = assetsData
     ?.reduce((sum, a) => sum + (Number(a.balance || 0) * Number(a.annual_yield || 0) / 100), 0) || 0;
   const formattedYield = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(annualYieldIncome);
+
+  const formattedLiabilities = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalLiabilities);
+
+  const annualInterestCost = liabilitiesData
+    ?.reduce((sum, l) => sum + (Number(l.balance || 0) * Number(l.interest_rate || 0) / 100), 0) || 0;
+
+  // Depreciating assets total
+  const depreciatingTotal = assetsData
+    ?.filter(a => Number(a.annual_growth_rate || 0) < 0)
+    .reduce((sum, a) => sum + Number(a.balance || 0), 0) || 0;
+
+  // Portfolio weighted averages for Monte Carlo
+  const weightedGrowthRate = totalAssets > 0
+    ? (assetsData?.reduce((sum, a) => sum + (Number(a.balance || 0) * Number(a.annual_growth_rate || 0)), 0) || 0) / totalAssets
+    : 7;
+  const weightedYieldRate = totalAssets > 0
+    ? (assetsData?.reduce((sum, a) => sum + (Number(a.balance || 0) * Number(a.annual_yield || 0)), 0) || 0) / totalAssets
+    : 4;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 p-4 md:p-8">
@@ -82,17 +110,18 @@ export default async function Dashboard() {
       </header>
 
       {/* ─── METRIC CARDS ─── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 mb-8">
 
-        {/* Card 1: Net Worth */}
+        {/* Card 1: Net Worth (assets minus liabilities) */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-slate-400 font-medium">Total Net Worth</h3>
+            <h3 className="text-slate-400 font-medium">True Net Worth</h3>
             <Wallet className="text-indigo-500 w-5 h-5" />
           </div>
-          <p className="text-2xl md:text-4xl font-bold">{formattedNetWorth}</p>
-          <p className="text-emerald-500 text-sm mt-2 flex items-center">
-            <TrendingUp className="w-4 h-4 mr-1" /> Live Calculation
+          <p className={`text-2xl md:text-4xl font-bold ${totalNetWorth >= 0 ? '' : 'text-red-400'}`}>{formattedNetWorth}</p>
+          <p className="text-slate-500 text-xs mt-2">
+            Assets ${totalAssets.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            {totalLiabilities > 0 && <> − Liabilities ${totalLiabilities.toLocaleString('en-US', { maximumFractionDigits: 0 })}</>}
           </p>
         </div>
 
@@ -107,7 +136,21 @@ export default async function Dashboard() {
           <p className="text-slate-400 text-sm mt-2">From Supabase</p>
         </div>
 
-        {/* Card 3: Fixed / Illiquid Assets */}
+        {/* Card 3: Annual Yield Income */}
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-slate-400 font-medium">Annual Yield Income</h3>
+            <DollarSign className="text-emerald-500 w-5 h-5" />
+          </div>
+          <p className="text-2xl md:text-4xl font-bold text-emerald-400">{formattedYield}</p>
+          <p className="text-slate-400 text-sm mt-2">
+            {annualInterestCost > 0
+              ? `Net of $${annualInterestCost.toLocaleString('en-US', { maximumFractionDigits: 0 })} interest cost`
+              : 'Dividends, rent, interest'}
+          </p>
+        </div>
+
+        {/* Card 4: Fixed Assets */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-slate-400 font-medium">Fixed Assets</h3>
@@ -117,19 +160,37 @@ export default async function Dashboard() {
           <p className="text-slate-400 text-sm mt-2">Real Estate, Bonds, Cash & More</p>
         </div>
 
-        {/* Card 4: Annual Yield Income */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-slate-400 font-medium">Annual Yield Income</h3>
-            <DollarSign className="text-emerald-500 w-5 h-5" />
+        {/* Card 5: Liabilities */}
+        {totalLiabilities > 0 && (
+          <div className="bg-slate-900 border border-red-900/30 p-6 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-slate-400 font-medium">Total Liabilities</h3>
+              <AlertTriangle className="text-red-500 w-5 h-5" />
+            </div>
+            <p className="text-2xl md:text-4xl font-bold text-red-400">{formattedLiabilities}</p>
+            <p className="text-slate-400 text-sm mt-2">
+              {annualInterestCost > 0 ? `$${annualInterestCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}/yr in interest` : 'Loans & credit'}
+            </p>
           </div>
-          <p className="text-2xl md:text-4xl font-bold text-emerald-400">{formattedYield}</p>
-          <p className="text-slate-400 text-sm mt-2">Projected from yield rates</p>
-        </div>
+        )}
+
+        {/* Card 6: Depreciating Assets */}
+        {depreciatingTotal > 0 && (
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-slate-400 font-medium">Depreciating Assets</h3>
+              <TrendingDown className="text-orange-500 w-5 h-5" />
+            </div>
+            <p className="text-2xl md:text-4xl font-bold text-orange-400">
+              ${depreciatingTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-slate-400 text-sm mt-2">Vehicles, equipment</p>
+          </div>
+        )}
 
       </div>
 
-      {/* ─── CHARTS & ADD FORM ─── */}
+      {/* ─── CHARTS & ADD FORMS ─── */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-8">
         <div className="xl:col-span-3">
           <DashboardCharts
@@ -137,13 +198,28 @@ export default async function Dashboard() {
             historyData={historyData}
           />
         </div>
-        <div className="xl:col-span-1">
+        <div className="xl:col-span-1 space-y-6">
           <AddAssetForm />
+          <AddLiabilityForm />
         </div>
       </div>
 
-      {/* ─── LEDGER ─── */}
+      {/* ─── ESCAPE VELOCITY FORECASTER ─── */}
+      <div className="mb-8">
+        <EscapeVelocity portfolio={{
+          totalAssets,
+          totalLiabilities,
+          weightedGrowthRate,
+          weightedYieldRate,
+          annualYieldIncome,
+        }} />
+      </div>
+
+      {/* ─── ASSET LEDGER ─── */}
       <AssetLedger assets={assetsData || []} />
+
+      {/* ─── LIABILITY LEDGER ─── */}
+      <LiabilityLedger liabilities={liabilitiesData || []} />
 
       <div className="mt-12 border-t border-slate-800 pt-8">
         <h2 className="text-xl font-bold text-slate-100 mb-6">Vault Security</h2>

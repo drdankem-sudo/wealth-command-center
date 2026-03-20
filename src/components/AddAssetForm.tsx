@@ -10,8 +10,10 @@ export default function AddAssetForm() {
 
   const isLiveAsset = assetClass === "Securities" || assetClass === "Crypto" || assetClass === "NSE Equities";
   const isGold = assetClass === "Gold";
+  const isDepreciating = assetClass === "Vehicle" || assetClass === "Equipment";
   const isYieldingAsset = assetClass === "Bonds/Tbills" || assetClass === "Sacco/MMF" || assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "Securities" || assetClass === "NSE Equities";
   const isAppreciatingAsset = assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "VC fund" || assetClass === "Gold" || assetClass === "Commodities";
+  const showAdvanced = isYieldingAsset || isAppreciatingAsset || isDepreciating;
 
   return (
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
@@ -36,7 +38,7 @@ export default function AddAssetForm() {
         <input
           type="text"
           name="name"
-          placeholder="Asset Name (e.g. Texas Ranch or BTC)"
+          placeholder="Asset Name (e.g. Tesla Model 3, BTC)"
           required
           className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500"
         />
@@ -54,12 +56,16 @@ export default function AddAssetForm() {
             <option value="NSE Equities">NSE Equities (Nairobi)</option>
             <option value="Crypto">Crypto</option>
           </optgroup>
-          <optgroup label="Illiquid / Real Assets">
+          <optgroup label="Appreciating Assets">
             <option value="Real estate">Real Estate</option>
             <option value="Farm/ranch">Farm / Ranch</option>
             <option value="VC fund">VC Fund / Private Equity</option>
             <option value="Gold">Gold (Troy Oz)</option>
             <option value="Commodities">Commodities</option>
+          </optgroup>
+          <optgroup label="Depreciating Assets">
+            <option value="Vehicle">Vehicle (Car/Truck/Motorcycle)</option>
+            <option value="Equipment">Equipment / Electronics</option>
           </optgroup>
           <optgroup label="Fixed Income / Cash">
             <option value="Bonds/Tbills">Bonds / T-Bills</option>
@@ -75,7 +81,6 @@ export default function AddAssetForm() {
             <input type="number" name="shares" placeholder="Total Shares" required step="any" className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
           </div>
         ) : isGold ? (
-          /* GOLD INPUT: Weight in oz + optional manual balance */
           <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Weight (Troy Oz)</label>
@@ -87,15 +92,23 @@ export default function AddAssetForm() {
             </div>
           </div>
         ) : assetClass !== "" ? (
-          /* STATIC ASSET INPUT (Balance) */
           <div className="animate-in fade-in duration-300">
-            <input type="number" name="balance" placeholder="Current Principal Value ($)" required step="0.01" className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
+            <input type="number" name="balance" placeholder={isDepreciating ? "Current Market Value ($)" : "Current Principal Value ($)"} required step="0.01" className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
           </div>
         ) : null}
 
         {/* ADVANCED FINANCIAL METRICS */}
-        {(isYieldingAsset || isAppreciatingAsset) && (
+        {showAdvanced && (
           <div className="grid grid-cols-2 gap-4 mt-2 p-3 bg-slate-950/50 border border-slate-800 rounded-lg animate-in fade-in duration-300">
+            {isDepreciating && (
+              <div className="col-span-2">
+                <label className="text-xs text-red-400 mb-1 block">
+                  Annual Depreciation Rate (%) — defaults to {assetClass === 'Vehicle' ? '15' : '25'}%
+                </label>
+                <input type="number" name="growthRate" placeholder={assetClass === 'Vehicle' ? '-15' : '-25'} step="0.1" className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded p-2 outline-none focus:border-red-500 text-sm" />
+                <p className="text-xs text-slate-600 mt-1">Enter negative number (e.g. -15 for 15% annual depreciation)</p>
+              </div>
+            )}
             {isAppreciatingAsset && (
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Expected Annual Growth (%)</label>
@@ -104,8 +117,10 @@ export default function AddAssetForm() {
             )}
             {isYieldingAsset && (
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Annual Dividend/Rent Yield (%)</label>
-                <input type="number" name="yieldRate" placeholder="e.g. 8.0" step="0.1" className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded p-2 outline-none focus:border-indigo-500 text-sm" />
+                <label className="text-xs text-slate-400 mb-1 block">
+                  {assetClass === 'Securities' ? 'Dividend Yield % (auto-fetched if blank)' : 'Annual Dividend/Rent Yield (%)'}
+                </label>
+                <input type="number" name="yieldRate" placeholder={assetClass === 'Securities' ? 'Auto from Finnhub' : 'e.g. 8.0'} step="0.1" className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded p-2 outline-none focus:border-indigo-500 text-sm" />
               </div>
             )}
           </div>
