@@ -48,10 +48,6 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ success: true, message: "Equities and Crypto Synced!" });
-
-  } catch (error: any) {
-    console.error("Sync Failed:", error.message);
     // 3. RECORD DAILY WEALTH SNAPSHOT
     // Calculate total assets
     const { data: allAssets } = await supabase.from('assets').select('balance');
@@ -61,6 +57,11 @@ export async function GET() {
     await supabase.from('net_worth_history').upsert([
       { recorded_date: new Date().toISOString().split('T')[0], net_worth: totalWealth }
     ], { onConflict: 'recorded_date' });
+
+    return NextResponse.json({ success: true, message: "Equities and Crypto Synced!" });
+
+  } catch (error: any) {
+    console.error("Sync Failed:", error.message);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

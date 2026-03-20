@@ -6,17 +6,20 @@ import AddAssetForm from '../components/AddAssetForm';
 import AssetLedger from '../components/AssetLedger';
 import LogoutButton from '../components/LogoutButton';
 import { createClient } from '@/utils/supabase-server';
-
-// Tell Next.js to fetch fresh data every 30 seconds
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 
 export default async function Dashboard() {
-  
+
   // SECURE CONNECTION: Using the new authenticated client
   const supabase = await createClient();
 
-  // 1. Fetch live BTC Price (For the top metric card)
-  const { data: btcData } = await supabase
+  // 1. Fetch live BTC Price (global data, not user-scoped — uses service client to bypass RLS)
+  const serviceSupabase = createServiceClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+  const { data: btcData } = await serviceSupabase
     .from('live_prices')
     .select('current_price')
     .eq('ticker_symbol', 'BTC')

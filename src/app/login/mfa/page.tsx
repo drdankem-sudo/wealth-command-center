@@ -26,7 +26,7 @@ export default function MfaVerificationPage() {
       return;
     }
 
-    const totpFactor = factors.totp[0];
+    const totpFactor = (factors.all ?? []).filter((f: any) => f.factor_type === 'totp' && f.status === 'verified')[0];
     if (!totpFactor) {
       setError("No 2FA device found. Please contact support.");
       setLoading(false);

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { createClient } from '../utils/supabase-client'; // Ensure this points to your browser client
+import { useState, useEffect, useMemo } from 'react';
+import { createClient } from '../utils/supabase-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { ShieldCheck, Smartphone, Loader2 } from 'lucide-react';
 
@@ -13,11 +13,12 @@ export default function MfaEnroll() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     supabase.auth.mfa.listFactors().then(({ data }) => {
-      if (data?.totp?.some(f => f.status === 'verified')) {
+      const totpFactors = data?.all?.filter((f: any) => f.factor_type === 'totp') ?? [];
+      if (totpFactors.some((f: any) => f.status === 'verified')) {
         setSuccess(true);
       }
     });
@@ -25,11 +26,12 @@ export default function MfaEnroll() {
 
   const startEnrollment = async () => {
     setLoading(true);
+    setError('');
 
     // Clean up any existing unverified factors to prevent naming collisions
     const { data: factors } = await supabase.auth.mfa.listFactors();
     if (factors) {
-      const unverifiedTotp = factors.totp.filter(f => f.status !== 'verified');
+      const unverifiedTotp = (factors.all ?? []).filter((f: any) => f.factor_type === 'totp' && f.status !== 'verified');
       for (const factor of unverifiedTotp) {
         await supabase.auth.mfa.unenroll({ factorId: factor.id });
       }
@@ -45,7 +47,7 @@ export default function MfaEnroll() {
       setError(error.message);
     } else {
       setFactorId(data.id);
-      setQrCodeUrl(data.totp.qr_code);
+      setQrCodeUrl(data.totp.uri);
     }
     setLoading(false);
   };
