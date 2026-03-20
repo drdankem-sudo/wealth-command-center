@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -6,7 +6,21 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-export async function GET() {
+// ─── SECURITY: Verify request is from Vercel Cron or authorized caller ───
+function isAuthorized(request: NextRequest): boolean {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return false; // Deny all if secret not configured
+
+  const authHeader = request.headers.get('authorization');
+  return authHeader === `Bearer ${cronSecret}`;
+}
+
+export async function GET(request: NextRequest) {
+  // ─── AUTH GATE: Block unauthorized callers ───
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     console.log("Starting Market Sync...");
     const livePricedIds = new Set<string>();
@@ -54,7 +68,7 @@ export async function GET() {
       }
     }
 
-    // ─── 2. UPDATE US EQUITIES via Finnhub ───
+    // ─── 2. UPDATE US EQUITIES via Finnhub (key in header, not URL) ───
     const { data: usStocks } = await supabase
       .from('assets')
       .select('id, ticker_symbol, shares')
@@ -64,7 +78,9 @@ export async function GET() {
     if (usStocks && usStocks.length > 0 && process.env.FINNHUB_API_KEY) {
       for (const stock of usStocks) {
         try {
-          const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${stock.ticker_symbol}&token=${process.env.FINNHUB_API_KEY}`);
+          const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(stock.ticker_symbol!)}`, {
+            headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
+          });
           const quote = await res.json();
           if (quote.c && stock.shares > 0) {
             await supabase.from('assets').update({ balance: quote.c * stock.shares }).eq('id', stock.id);
@@ -87,7 +103,7 @@ export async function GET() {
     if (nseStocks && nseStocks.length > 0 && process.env.RAPIDAPI_KEY) {
       for (const stock of nseStocks) {
         try {
-          const res = await fetch(`https://nairobi-stock-exchange-nse.p.rapidapi.com/stocks/${stock.ticker_symbol}/realtime`, {
+          const res = await fetch(`https://nairobi-stock-exchange-nse.p.rapidapi.com/stocks/${encodeURIComponent(stock.ticker_symbol!)}/realtime`, {
             headers: {
               'x-rapidapi-key': process.env.RAPIDAPI_KEY,
               'x-rapidapi-host': 'nairobi-stock-exchange-nse.p.rapidapi.com'
@@ -141,7 +157,7 @@ export async function GET() {
     if (commodityAssets && commodityAssets.length > 0 && process.env.COMMODITIES_API_KEY) {
       for (const commodity of commodityAssets) {
         try {
-          const res = await fetch(`https://commodities-api.com/api/latest?access_key=${process.env.COMMODITIES_API_KEY}&base=USD&symbols=${commodity.ticker_symbol}`);
+          const res = await fetch(`https://commodities-api.com/api/latest?access_key=${process.env.COMMODITIES_API_KEY}&base=USD&symbols=${encodeURIComponent(commodity.ticker_symbol!)}`);
           const data = await res.json();
           if (data?.data?.rates?.[commodity.ticker_symbol!] && commodity.shares > 0) {
             // commodities-api returns 1/price (units per USD), so invert
@@ -210,8 +226,9 @@ export async function GET() {
 
     return NextResponse.json({ success: true, message: "Full market sync complete." });
 
-  } catch (error: any) {
-    console.error("Sync Failed:", error.message);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Sync Failed:", error);
+    // Generic error — never leak internals
+    return NextResponse.json({ error: 'Internal sync error' }, { status: 500 });
   }
 }

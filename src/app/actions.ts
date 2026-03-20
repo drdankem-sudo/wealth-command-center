@@ -3,6 +3,94 @@
 
 import { createClient } from '../utils/supabase-server';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+// ─── INPUT VALIDATION SCHEMAS ───
+const VALID_ASSET_CLASSES = [
+  'Securities', 'Crypto', 'NSE Equities', 'Gold', 'Commodities',
+  'Real estate', 'Farm/ranch', 'VC fund', 'Bonds/Tbills', 'Sacco/MMF', 'Cash'
+] as const;
+
+const TICKER_REGEX = /^[A-Z0-9._-]{1,12}$/;
+
+const AddAssetSchema = z.object({
+  name: z.string().min(1, 'Name required').max(100, 'Name too long'),
+  assetClass: z.enum(VALID_ASSET_CLASSES, { message: 'Invalid asset class' }),
+  ticker: z.string().regex(TICKER_REGEX, 'Invalid ticker format').optional().or(z.literal('')),
+  shares: z.number().min(0).max(1_000_000_000).optional(),
+  balance: z.number().min(0).max(100_000_000_000).optional(),
+  growthRate: z.number().min(0).max(100).optional(),
+  yieldRate: z.number().min(0).max(100).optional(),
+  targetAllocation: z.number().min(0).max(100).optional(),
+});
+
+const DeleteSchema = z.object({
+  id: z.string().uuid('Invalid asset ID'),
+});
+
+const UpdateSchema = z.object({
+  id: z.string().uuid('Invalid asset ID'),
+  shares: z.number().min(0).max(1_000_000_000).optional(),
+  balance: z.number().min(0).max(100_000_000_000).optional(),
+  ticker: z.string().max(12).optional().or(z.literal('')),
+  assetClass: z.string().max(30).optional().or(z.literal('')),
+});
+
+// ─── SAFE FETCH: encodeURIComponent on all dynamic URL segments ───
+async function fetchFinnhub(ticker: string): Promise<number | null> {
+  if (!process.env.FINNHUB_API_KEY) return null;
+  try {
+    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}`, {
+      headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY }
+    });
+    const data = await res.json();
+    return data?.c || null;
+  } catch { return null; }
+}
+
+async function fetchCrypto(ticker: string): Promise<number | null> {
+  try {
+    const coinId = ticker === 'BTC' ? 'bitcoin' : ticker === 'ETH' ? 'ethereum' : ticker === 'SOL' ? 'solana' : ticker.toLowerCase();
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd`);
+    const data = await res.json();
+    return data[coinId]?.usd || null;
+  } catch { return null; }
+}
+
+async function fetchNSE(ticker: string): Promise<number | null> {
+  if (!process.env.RAPIDAPI_KEY) return null;
+  try {
+    const res = await fetch(`https://nairobi-stock-exchange-nse.p.rapidapi.com/stocks/${encodeURIComponent(ticker)}/realtime`, {
+      headers: {
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+        'x-rapidapi-host': 'nairobi-stock-exchange-nse.p.rapidapi.com'
+      }
+    });
+    const data = await res.json();
+    return data?.price || null;
+  } catch { return null; }
+}
+
+async function fetchGold(): Promise<number | null> {
+  if (!process.env.GOLD_API_KEY) return null;
+  try {
+    const res = await fetch('https://www.goldapi.io/api/XAU/USD', {
+      headers: { 'x-access-token': process.env.GOLD_API_KEY }
+    });
+    const data = await res.json();
+    return data?.price || null;
+  } catch { return null; }
+}
+
+async function getPrice(assetClass: string, ticker: string): Promise<number | null> {
+  switch (assetClass) {
+    case 'Securities': return fetchFinnhub(ticker);
+    case 'Crypto': return fetchCrypto(ticker);
+    case 'NSE Equities': return fetchNSE(ticker);
+    case 'Gold': return fetchGold();
+    default: return null;
+  }
+}
 
 // --- FUNCTION 1: ADD (AND CONSOLIDATE) ASSET ---
 export async function addAsset(formData: FormData) {
@@ -11,19 +99,31 @@ export async function addAsset(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'unauthorized' };
 
-  const name = formData.get('name') as string;
-  const asset_class = formData.get('assetClass') as string;
+  // Validate input
+  const raw = {
+    name: (formData.get('name') as string || '').trim(),
+    assetClass: formData.get('assetClass') as string,
+    ticker: ((formData.get('ticker') as string) || '').toUpperCase().trim(),
+    shares: Number(formData.get('shares')) || 0,
+    balance: Number(formData.get('balance')) || 0,
+    growthRate: Number(formData.get('growthRate')) || 0,
+    yieldRate: Number(formData.get('yieldRate')) || 0,
+    targetAllocation: Number(formData.get('targetAllocation')) || 0,
+  };
+
+  const parsed = AddAssetSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message || 'validation_failed' };
+  }
+
+  const { name, assetClass, ticker, shares: incomingShares, balance: manualBalance, growthRate, yieldRate, targetAllocation } = parsed.data;
 
   let balance = 0;
-  let ticker_symbol = null;
-  let shares = 0;
-  const growth_rate = Number(formData.get('growthRate')) || 0;
-  const yield_rate = Number(formData.get('yieldRate')) || 0;
-  const target_alloc = Number(formData.get('targetAllocation')) || 0;
+  let ticker_symbol: string | null = ticker || null;
+  let shares = incomingShares || 0;
 
-  if (asset_class === 'Securities' || asset_class === 'Crypto' || asset_class === 'NSE Equities') {
-    ticker_symbol = (formData.get('ticker') as string).toUpperCase();
-    const incomingShares = Number(formData.get('shares'));
+  if (assetClass === 'Securities' || assetClass === 'Crypto' || assetClass === 'NSE Equities') {
+    if (!ticker_symbol) return { error: 'Ticker symbol required for market assets' };
 
     // SCAN THE VAULT: Do we already own this?
     const { data: existingAssets } = await supabase
@@ -33,76 +133,45 @@ export async function addAsset(formData: FormData) {
       .eq('user_id', user.id);
 
     const existingAsset = existingAssets && existingAssets.length > 0 ? existingAssets[0] : null;
-
-    shares = existingAsset ? existingAsset.shares + incomingShares : incomingShares;
+    shares = existingAsset ? existingAsset.shares + (incomingShares || 0) : (incomingShares || 0);
 
     // AUTO-PRICE
-    try {
-      if (asset_class === 'NSE Equities') {
-        if (process.env.RAPIDAPI_KEY) {
-          const res = await fetch(`https://nairobi-stock-exchange-nse.p.rapidapi.com/stocks/${ticker_symbol}/realtime`, {
-            headers: {
-              'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-              'x-rapidapi-host': 'nairobi-stock-exchange-nse.p.rapidapi.com'
-            }
-          });
-          const data = await res.json();
-          if (data && data.price) balance = data.price * shares;
-        }
-      } else if (asset_class === 'Securities') {
-        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker_symbol}&token=${process.env.FINNHUB_API_KEY}`);
-        const data = await res.json();
-        if (data && data.c) balance = data.c * shares;
-      } else if (asset_class === 'Crypto') {
-        const coinId = ticker_symbol === 'BTC' ? 'bitcoin' : ticker_symbol.toLowerCase();
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
-        const data = await res.json();
-        if (data[coinId]) balance = data[coinId].usd * shares;
-      }
-    } catch (err) {
-      console.error("Failed to fetch live price:", err);
-    }
+    const price = await getPrice(assetClass, ticker_symbol);
+    if (price && shares > 0) balance = price * shares;
 
     if (existingAsset) {
       const { error } = await supabase.from('assets').update({ shares, balance }).eq('id', existingAsset.id);
       if (error) return { error: 'update_failed' };
     } else {
       const { error } = await supabase.from('assets').insert([{
-        user_id: user.id, name, asset_class, balance, ticker_symbol, shares, target_allocation: target_alloc, annual_growth_rate: growth_rate, annual_yield: yield_rate
+        user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
+        target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: yieldRate
       }]);
       if (error) return { error: 'insert_failed' };
     }
 
-  } else if (asset_class === 'Gold') {
-    // Gold: shares = troy ounces, fetch live price
-    shares = Number(formData.get('shares')) || 0;
+  } else if (assetClass === 'Gold') {
     ticker_symbol = 'XAU';
 
-    try {
-      if (process.env.GOLD_API_KEY && shares > 0) {
-        const res = await fetch('https://www.goldapi.io/api/XAU/USD', {
-          headers: { 'x-access-token': process.env.GOLD_API_KEY }
-        });
-        const data = await res.json();
-        if (data && data.price) balance = data.price * shares;
-      }
-    } catch (err) {
-      console.error("Failed to fetch gold price:", err);
-    }
+    // Fetch live price
+    const price = await fetchGold();
+    if (price && shares > 0) balance = price * shares;
 
-    // If no API price, fall back to manual balance
-    if (balance === 0) balance = Number(formData.get('balance')) || 0;
+    // Fallback to manual balance
+    if (balance === 0) balance = manualBalance || 0;
 
     const { error } = await supabase.from('assets').insert([{
-      user_id: user.id, name, asset_class, balance, ticker_symbol, shares, target_allocation: target_alloc, annual_growth_rate: growth_rate, annual_yield: yield_rate
+      user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
+      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: yieldRate
     }]);
     if (error) return { error: 'insert_failed' };
 
   } else {
     // Manual entry for Real Estate, Farms, Bonds, etc.
-    balance = Number(formData.get('balance'));
+    balance = manualBalance || 0;
     const { error } = await supabase.from('assets').insert([{
-      user_id: user.id, name, asset_class, balance, ticker_symbol, shares, target_allocation: target_alloc, annual_growth_rate: growth_rate, annual_yield: yield_rate
+      user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
+      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: yieldRate
     }]);
     if (error) return { error: 'insert_failed' };
   }
@@ -117,8 +186,10 @@ export async function deleteAsset(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'unauthorized' };
 
-  const id = formData.get('id') as string;
-  const { error } = await supabase.from('assets').delete().eq('id', id).eq('user_id', user.id);
+  const parsed = DeleteSchema.safeParse({ id: formData.get('id') });
+  if (!parsed.success) return { error: 'invalid_id' };
+
+  const { error } = await supabase.from('assets').delete().eq('id', parsed.data.id).eq('user_id', user.id);
   if (error) return { error: 'delete_failed' };
   revalidatePath('/');
   return { success: true };
@@ -130,46 +201,27 @@ export async function updateAsset(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'unauthorized' };
 
-  const id = formData.get('id') as string;
-  const newSharesRaw = formData.get('shares');
-  const newBalanceRaw = formData.get('balance');
-  const ticker_symbol = formData.get('ticker') as string;
-  const asset_class = formData.get('assetClass') as string;
+  const raw = {
+    id: formData.get('id') as string,
+    shares: formData.get('shares') ? Number(formData.get('shares')) : undefined,
+    balance: formData.get('balance') ? Number(formData.get('balance')) : undefined,
+    ticker: (formData.get('ticker') as string) || '',
+    assetClass: (formData.get('assetClass') as string) || '',
+  };
 
-  const updateData: any = {};
+  const parsed = UpdateSchema.safeParse(raw);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message || 'validation_failed' };
 
-  if (ticker_symbol && ticker_symbol !== 'undefined' && ticker_symbol !== 'null' && newSharesRaw) {
-    const newShares = Number(newSharesRaw);
-    updateData.shares = newShares;
+  const { id, shares, balance, ticker, assetClass } = parsed.data;
+  const updateData: Record<string, number> = {};
 
-    try {
-      if (asset_class === 'NSE Equities' && process.env.RAPIDAPI_KEY) {
-        const res = await fetch(`https://nairobi-stock-exchange-nse.p.rapidapi.com/stocks/${ticker_symbol}/realtime`, {
-          headers: { 'x-rapidapi-key': process.env.RAPIDAPI_KEY, 'x-rapidapi-host': 'nairobi-stock-exchange-nse.p.rapidapi.com' }
-        });
-        const data = await res.json();
-        if (data && data.price) updateData.balance = data.price * newShares;
-      } else if (asset_class === 'Securities') {
-        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker_symbol}&token=${process.env.FINNHUB_API_KEY}`);
-        const data = await res.json();
-        if (data && data.c) updateData.balance = data.c * newShares;
-      } else if (asset_class === 'Crypto') {
-        const coinId = ticker_symbol === 'BTC' ? 'bitcoin' : ticker_symbol.toLowerCase();
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
-        const data = await res.json();
-        if (data[coinId]) updateData.balance = data[coinId].usd * newShares;
-      } else if (asset_class === 'Gold' && process.env.GOLD_API_KEY) {
-        const res = await fetch('https://www.goldapi.io/api/XAU/USD', {
-          headers: { 'x-access-token': process.env.GOLD_API_KEY }
-        });
-        const data = await res.json();
-        if (data && data.price) updateData.balance = data.price * newShares;
-      }
-    } catch (err) {
-      console.error("Failed to fetch live price on update:", err);
-    }
-  } else if (newBalanceRaw) {
-    updateData.balance = Number(newBalanceRaw);
+  if (ticker && ticker !== 'undefined' && ticker !== 'null' && shares !== undefined) {
+    updateData.shares = shares;
+
+    const price = await getPrice(assetClass || '', ticker.toUpperCase());
+    if (price) updateData.balance = price * shares;
+  } else if (balance !== undefined) {
+    updateData.balance = balance;
   }
 
   const { error } = await supabase.from('assets').update(updateData).eq('id', id).eq('user_id', user.id);

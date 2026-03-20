@@ -1,6 +1,7 @@
 // src/app/page.tsx
 import MfaEnroll from '@/components/MfaEnroll';
-import { Wallet, TrendingUp, Landmark, DollarSign } from 'lucide-react';
+import { Wallet, TrendingUp, Landmark, DollarSign, Settings } from 'lucide-react';
+import Link from 'next/link';
 import DashboardCharts from '../components/DashboardCharts';
 import AddAssetForm from '../components/AddAssetForm';
 import AssetLedger from '../components/AssetLedger';
@@ -68,7 +69,16 @@ export default async function Dashboard() {
           <h1 className="text-xl md:text-3xl font-bold tracking-tight">Wealth Command Center</h1>
           <p className="text-slate-400 mt-1 text-sm">Real-time asset tracking and performance</p>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
+            title="Vault Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </Link>
+          <LogoutButton />
+        </div>
       </header>
 
       {/* ─── METRIC CARDS ─── */}

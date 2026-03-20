@@ -34,18 +34,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     return redirect('/');
   };
 
-  const signUp = async (formData: FormData) => {
-    "use server";
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-
-    const supabase = await createClient();
-    const { error } = await supabase.auth.signUp({ email, password });
-
-    if (error) return redirect(`/login?error=${getErrorCode(error.message)}`);
-    return redirect('/');
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-xl shadow-2xl">
@@ -54,7 +42,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <ShieldAlert className="w-10 h-10 text-indigo-500" />
           </div>
           <h1 className="text-2xl font-bold text-slate-100">Vault Access Restricted</h1>
-          <p className="text-slate-400 text-sm mt-2">Enter credentials to command the wealth engine</p>
+          <p className="text-slate-400 text-sm mt-2">Authorized personnel only</p>
         </div>
 
         <form className="flex flex-col gap-4">
@@ -62,6 +50,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             name="email"
             placeholder="Authorized Email"
             required
+            autoComplete="email"
             className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500 transition-colors"
           />
           <input
@@ -69,15 +58,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             name="password"
             placeholder="Secure Password"
             required
+            autoComplete="current-password"
             className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500 transition-colors"
           />
 
           <div className="flex flex-col gap-2 mt-4">
             <button formAction={signIn} className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors">
               Authenticate & Enter
-            </button>
-            <button formAction={signUp} className="bg-transparent border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium py-3 rounded-lg transition-colors">
-              Initialize New Commander
             </button>
           </div>
 
@@ -87,6 +74,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </p>
           )}
         </form>
+
+        <p className="mt-6 text-center text-slate-600 text-xs">
+          Access is invite-only. Contact the vault administrator.
+        </p>
       </div>
     </div>
   );

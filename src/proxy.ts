@@ -39,8 +39,8 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const url = request.nextUrl.clone();
 
-  // 2. If no user and trying to access the dashboard, go to /login
-  if (!user && url.pathname === '/') {
+  // 2. If no user and trying to access protected pages, go to /login
+  if (!user && (url.pathname === '/' || url.pathname === '/settings')) {
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
@@ -66,5 +66,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/login/mfa'],
+  matcher: ['/', '/login', '/login/mfa', '/settings'],
 };
