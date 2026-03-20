@@ -6,51 +6,59 @@ import { useRef, useState } from 'react';
 export default function AddAssetForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [assetClass, setAssetClass] = useState("");
+  const [status, setStatus] = useState<{ error?: string; success?: boolean } | null>(null);
 
-  // Determine the behavior based on the asset class
-  const isLiveAsset = assetClass === "Securities" || assetClass === "Crypto";
-  const isYieldingAsset = assetClass === "Bonds/Tbills" || assetClass === "Sacco/MMF" || assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "Securities";
+  const isLiveAsset = assetClass === "Securities" || assetClass === "Crypto" || assetClass === "NSE Equities";
+  const isGold = assetClass === "Gold";
+  const isYieldingAsset = assetClass === "Bonds/Tbills" || assetClass === "Sacco/MMF" || assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "Securities" || assetClass === "NSE Equities";
   const isAppreciatingAsset = assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "VC fund" || assetClass === "Gold" || assetClass === "Commodities";
 
   return (
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
       <h3 className="text-slate-400 font-medium mb-4">Add New Asset</h3>
-      
-      <form 
+
+      <form
         ref={formRef}
         action={async (formData) => {
-          await addAsset(formData);
-          formRef.current?.reset();
-          setAssetClass(""); 
-        }} 
+          setStatus(null);
+          const result = await addAsset(formData);
+          if (result?.error) {
+            setStatus({ error: result.error });
+          } else {
+            setStatus({ success: true });
+            formRef.current?.reset();
+            setAssetClass("");
+            setTimeout(() => setStatus(null), 3000);
+          }
+        }}
         className="flex flex-col gap-4"
       >
-        <input 
-          type="text" 
-          name="name" 
-          placeholder="Asset Name (e.g. Texas Ranch or BTC)" 
+        <input
+          type="text"
+          name="name"
+          placeholder="Asset Name (e.g. Texas Ranch or BTC)"
           required
           className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500"
         />
 
-        {/* THE NEW TAXONOMY */}
-        <select 
-          name="assetClass" 
+        <select
+          name="assetClass"
           required
           value={assetClass}
-          onChange={(e) => setAssetClass(e.target.value)}
+          onChange={(e) => { setAssetClass(e.target.value); setStatus(null); }}
           className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500"
         >
           <option value="">Select Class...</option>
           <optgroup label="Live Markets">
-            <option value="Securities">Securities (Stocks/ETFs)</option>
+            <option value="Securities">Securities (US Stocks/ETFs)</option>
+            <option value="NSE Equities">NSE Equities (Nairobi)</option>
             <option value="Crypto">Crypto</option>
           </optgroup>
           <optgroup label="Illiquid / Real Assets">
             <option value="Real estate">Real Estate</option>
             <option value="Farm/ranch">Farm / Ranch</option>
             <option value="VC fund">VC Fund / Private Equity</option>
-            <option value="Gold">Gold</option>
+            <option value="Gold">Gold (Troy Oz)</option>
             <option value="Commodities">Commodities</option>
           </optgroup>
           <optgroup label="Fixed Income / Cash">
@@ -63,8 +71,20 @@ export default function AddAssetForm() {
         {/* LIVE ASSET INPUTS (Ticker/Shares) */}
         {isLiveAsset ? (
           <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
-            <input type="text" name="ticker" placeholder="Ticker (e.g. AAPL)" required className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500 uppercase" />
+            <input type="text" name="ticker" placeholder={assetClass === "NSE Equities" ? "Ticker (e.g. SCOM)" : "Ticker (e.g. AAPL)"} required className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500 uppercase" />
             <input type="number" name="shares" placeholder="Total Shares" required step="any" className="bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
+          </div>
+        ) : isGold ? (
+          /* GOLD INPUT: Weight in oz + optional manual balance */
+          <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Weight (Troy Oz)</label>
+              <input type="number" name="shares" placeholder="e.g. 10" required step="any" className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Fallback Value ($)</label>
+              <input type="number" name="balance" placeholder="If no API" step="0.01" className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
+            </div>
           </div>
         ) : assetClass !== "" ? (
           /* STATIC ASSET INPUT (Balance) */
@@ -91,9 +111,28 @@ export default function AddAssetForm() {
           </div>
         )}
 
+        {/* TARGET ALLOCATION */}
+        {assetClass !== "" && (
+          <div className="animate-in fade-in duration-300">
+            <label className="text-xs text-slate-400 mb-1 block">Target Portfolio Allocation (%)</label>
+            <input type="number" name="targetAllocation" placeholder="e.g. 15" step="0.1" min="0" max="100" className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg p-3 outline-none focus:border-indigo-500" />
+          </div>
+        )}
+
         <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors mt-2">
           Inject Asset into Vault
         </button>
+
+        {status?.error && (
+          <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/20 text-center">
+            Failed to add asset. Please try again.
+          </p>
+        )}
+        {status?.success && (
+          <p className="text-emerald-400 text-sm bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 text-center">
+            Asset added to vault.
+          </p>
+        )}
       </form>
     </div>
   );

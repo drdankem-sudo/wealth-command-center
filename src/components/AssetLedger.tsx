@@ -12,31 +12,34 @@ interface LedgerAsset {
   ticker_symbol: string | null;
   shares: number;
   balance: number;
+  annual_growth_rate: number;
+  annual_yield: number;
+  pending_yield_cash: number;
+  target_allocation: number;
 }
 
 // --- SUB-COMPONENT: A Single Editable Row ---
 function AssetRow({ asset }: { asset: LedgerAsset }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-  
+
   const [editShares, setEditShares] = useState(asset.shares || 0);
   const [editBalance, setEditBalance] = useState(asset.balance || 0);
 
   return (
     <tr className="border-b border-slate-800 hover:bg-slate-800/30 transition-colors">
       <td className="p-4 font-medium text-slate-100">{asset.name}</td>
-      
-      <td className="p-4 text-sm text-slate-400">
+
+      <td className="p-4 text-sm text-slate-400 hidden sm:table-cell">
         {asset.ticker_symbol ? (
           <span className="font-bold text-indigo-400">{asset.ticker_symbol}</span>
         ) : "N/A"}
       </td>
 
-      {/* SHARES COLUMN */}
-      <td className="p-4 text-sm text-slate-400">
+      <td className="p-4 text-sm text-slate-400 hidden sm:table-cell">
         {isEditing && asset.ticker_symbol ? (
-          <input 
-            type="number" 
+          <input
+            type="number"
             value={editShares}
             onChange={(e) => setEditShares(Number(e.target.value))}
             className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100 outline-none focus:border-indigo-500"
@@ -46,16 +49,15 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
         )}
       </td>
 
-      {/* BALANCE COLUMN */}
       <td className="p-4 font-medium text-emerald-400">
         {isEditing ? (
           asset.ticker_symbol ? (
-            <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded">Auto-Calculates on Save</span>
+            <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded">Auto-Calc</span>
           ) : (
             <div className="flex items-center gap-1">
               <span>$</span>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 value={editBalance}
                 onChange={(e) => setEditBalance(Number(e.target.value))}
                 className="w-32 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100 outline-none focus:border-emerald-500"
@@ -67,12 +69,29 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
         )}
       </td>
 
-      {/* ACTIONS COLUMN */}
+      {/* Growth % */}
+      <td className="p-4 text-sm text-slate-400 hidden lg:table-cell">
+        {asset.annual_growth_rate ? `${asset.annual_growth_rate}%` : "-"}
+      </td>
+
+      {/* Yield % */}
+      <td className="p-4 text-sm text-slate-400 hidden lg:table-cell">
+        {asset.annual_yield ? `${asset.annual_yield}%` : "-"}
+      </td>
+
+      {/* Accrued Yield */}
+      <td className="p-4 text-sm text-amber-400 hidden lg:table-cell">
+        {asset.pending_yield_cash
+          ? `$${Number(asset.pending_yield_cash).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "-"}
+      </td>
+
+      {/* Actions */}
       <td className="p-4 text-right">
         {isConfirmingDelete ? (
           <div className="flex items-center justify-end gap-2">
             <span className="text-xs text-red-400 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> Sure?</span>
-            <form action={deleteAsset}>
+            <form action={async (formData) => { await deleteAsset(formData); }}>
               <input type="hidden" name="id" value={asset.id} />
               <button type="submit" className="bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white px-2 py-1 rounded transition-colors text-xs font-bold">
                 YES
@@ -91,10 +110,9 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
               <input type="hidden" name="id" value={asset.id} />
               <input type="hidden" name="shares" value={editShares} />
               <input type="hidden" name="balance" value={editBalance} />
-              {/* Secret inputs to pass ticker and class back to the server */}
               <input type="hidden" name="ticker" value={asset.ticker_symbol || ''} />
               <input type="hidden" name="assetClass" value={asset.asset_class} />
-              
+
               <button type="submit" className="text-emerald-500 hover:bg-emerald-500/20 p-2 rounded-lg transition-all" title="Save Changes">
                 <Check className="w-4 h-4" />
               </button>
@@ -154,9 +172,12 @@ export default function AssetLedger({ assets }: { assets: LedgerAsset[] }) {
               <thead>
                 <tr className="text-slate-500 text-xs uppercase tracking-wider border-b border-slate-800 bg-slate-900">
                   <th className="p-4 font-medium">Asset Name</th>
-                  <th className="p-4 font-medium">Ticker</th>
-                  <th className="p-4 font-medium">Shares</th>
+                  <th className="p-4 font-medium hidden sm:table-cell">Ticker</th>
+                  <th className="p-4 font-medium hidden sm:table-cell">Shares</th>
                   <th className="p-4 font-medium">Value ($)</th>
+                  <th className="p-4 font-medium hidden lg:table-cell">Growth %</th>
+                  <th className="p-4 font-medium hidden lg:table-cell">Yield %</th>
+                  <th className="p-4 font-medium hidden lg:table-cell">Accrued Yield</th>
                   <th className="p-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
