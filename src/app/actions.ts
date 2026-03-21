@@ -8,7 +8,7 @@ import { z } from 'zod';
 // ─── INPUT VALIDATION SCHEMAS ───
 const VALID_ASSET_CLASSES = [
   'Securities', 'Crypto', 'NSE Equities', 'Gold', 'Commodities',
-  'Real estate', 'Farm/ranch', 'VC fund', 'Bonds/Tbills', 'Sacco/MMF', 'Cash',
+  'Real estate', 'Farm/ranch', 'VC fund', 'Startup Equity', 'Bonds/Tbills', 'Sacco/MMF', 'Cash',
   'Vehicle', 'Equipment'
 ] as const;
 
@@ -29,6 +29,7 @@ const AddAssetSchema = z.object({
   growthRate: z.number().min(-100).max(100).optional(), // negative = depreciation
   yieldRate: z.number().min(0).max(100).optional(),
   targetAllocation: z.number().min(0).max(100).optional(),
+  monthlyIncome: z.number().min(0).max(10_000_000).optional(),
 });
 
 const DeleteSchema = z.object({
@@ -122,6 +123,7 @@ export async function addAsset(formData: FormData) {
       : (DEFAULT_DEPRECIATION[assetClassRaw] ?? 0),
     yieldRate: Number(formData.get('yieldRate')) || 0,
     targetAllocation: Number(formData.get('targetAllocation')) || 0,
+    monthlyIncome: Number(formData.get('monthlyIncome')) || 0,
   };
 
   const parsed = AddAssetSchema.safeParse(raw);
@@ -129,7 +131,7 @@ export async function addAsset(formData: FormData) {
     return { error: parsed.error.issues[0]?.message || 'validation_failed' };
   }
 
-  const { name, assetClass, ticker, shares: incomingShares, balance: manualBalance, growthRate, yieldRate, targetAllocation } = parsed.data;
+  const { name, assetClass, ticker, shares: incomingShares, balance: manualBalance, growthRate, yieldRate, targetAllocation, monthlyIncome } = parsed.data;
 
   let balance = 0;
   let ticker_symbol: string | null = ticker || null;
@@ -170,7 +172,8 @@ export async function addAsset(formData: FormData) {
     } else {
       const { error } = await supabase.from('assets').insert([{
         user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
-        target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: autoYield
+        target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: autoYield,
+        monthly_income: monthlyIncome
       }]);
       if (error) return { error: 'insert_failed' };
     }
@@ -183,7 +186,8 @@ export async function addAsset(formData: FormData) {
 
     const { error } = await supabase.from('assets').insert([{
       user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
-      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: autoYield
+      target_allocation: targetAllocation, annual_growth_rate: growthRate, annual_yield: autoYield,
+      monthly_income: monthlyIncome
     }]);
     if (error) return { error: 'insert_failed' };
 
@@ -192,7 +196,8 @@ export async function addAsset(formData: FormData) {
     balance = manualBalance || 0;
     const { error } = await supabase.from('assets').insert([{
       user_id: user.id, name, asset_class: assetClass, balance, ticker_symbol, shares,
-      target_allocation: targetAllocation, annual_growth_rate: growthRate ?? 0, annual_yield: autoYield
+      target_allocation: targetAllocation, annual_growth_rate: growthRate ?? 0, annual_yield: autoYield,
+      monthly_income: monthlyIncome
     }]);
     if (error) return { error: 'insert_failed' };
   }

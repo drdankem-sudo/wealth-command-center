@@ -11,9 +11,11 @@ export default function AddAssetForm() {
   const isLiveAsset = assetClass === "Securities" || assetClass === "Crypto" || assetClass === "NSE Equities";
   const isGold = assetClass === "Gold";
   const isDepreciating = assetClass === "Vehicle" || assetClass === "Equipment";
+  const isStartup = assetClass === "Startup Equity";
   const isYieldingAsset = assetClass === "Bonds/Tbills" || assetClass === "Sacco/MMF" || assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "Securities" || assetClass === "NSE Equities";
   const isAppreciatingAsset = assetClass === "Real estate" || assetClass === "Farm/ranch" || assetClass === "VC fund" || assetClass === "Gold" || assetClass === "Commodities";
-  const showAdvanced = isYieldingAsset || isAppreciatingAsset || isDepreciating;
+  const hasMonthlyIncome = isStartup || assetClass === "Real estate" || assetClass === "Farm/ranch";
+  const showAdvanced = isYieldingAsset || isAppreciatingAsset || isDepreciating || isStartup;
 
   return (
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
@@ -62,6 +64,7 @@ export default function AddAssetForm() {
             <option value="VC fund">VC Fund / Private Equity</option>
             <option value="Gold">Gold (Troy Oz)</option>
             <option value="Commodities">Commodities</option>
+            <option value="Startup Equity">Startup Equity</option>
           </optgroup>
           <optgroup label="Depreciating Assets">
             <option value="Vehicle">Vehicle (Car/Truck/Motorcycle)</option>
@@ -121,6 +124,20 @@ export default function AddAssetForm() {
                   {assetClass === 'Securities' ? 'Dividend Yield % (auto-fetched if blank)' : 'Annual Dividend/Rent Yield (%)'}
                 </label>
                 <input type="number" name="yieldRate" placeholder={assetClass === 'Securities' ? 'Auto from Finnhub' : 'e.g. 8.0'} step="0.1" className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded p-2 outline-none focus:border-indigo-500 text-sm" />
+              </div>
+            )}
+            {isStartup && (
+              <div className="col-span-2">
+                <p className="text-xs text-slate-500 mb-2">No valuation yet? Set balance to $0. You can update it later when valued.</p>
+              </div>
+            )}
+            {hasMonthlyIncome && (
+              <div className={isStartup ? 'col-span-2' : ''}>
+                <label className="text-xs text-emerald-400 mb-1 block">
+                  {isStartup ? 'Variable Monthly Income ($)' : 'Monthly Rental/Income ($)'}
+                </label>
+                <input type="number" name="monthlyIncome" placeholder="e.g. 2500" step="0.01" className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded p-2 outline-none focus:border-emerald-500 text-sm" />
+                <p className="text-xs text-slate-600 mt-1">Update anytime as income changes</p>
               </div>
             )}
           </div>

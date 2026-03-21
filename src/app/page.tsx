@@ -8,6 +8,8 @@ import AddLiabilityForm from '../components/AddLiabilityForm';
 import AssetLedger from '../components/AssetLedger';
 import LiabilityLedger from '../components/LiabilityLedger';
 import EscapeVelocity from '../components/EscapeVelocity';
+import LiveTicker from '../components/LiveTicker';
+import CurrencyToggle from '../components/CurrencyToggle';
 import LogoutButton from '../components/LogoutButton';
 import { createClient } from '@/utils/supabase-server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
@@ -31,7 +33,7 @@ export default async function Dashboard() {
   // All user assets with full financial fields
   const { data: assetsData } = await supabase
     .from('assets')
-    .select('id, name, asset_class, ticker_symbol, shares, target_allocation, balance, annual_growth_rate, annual_yield, pending_yield_cash');
+    .select('id, name, asset_class, ticker_symbol, shares, target_allocation, balance, annual_growth_rate, annual_yield, pending_yield_cash, monthly_income');
 
   // All user liabilities
   const { data: liabilitiesData } = await supabase
@@ -52,6 +54,14 @@ export default async function Dashboard() {
     };
   }) || [];
 
+  // Fetch KES rate server-side for the currency toggle card
+  let kesRate: number | null = null;
+  try {
+    const fxRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD', { next: { revalidate: 3600 } });
+    const fxData = await fxRes.json();
+    kesRate = fxData?.rates?.KES || null;
+  } catch {}
+
   // ─── Computed Metrics ───
   const btcPrice = btcData ? btcData.current_price : 0;
   const formattedBtcPrice = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(btcPrice);
@@ -61,14 +71,18 @@ export default async function Dashboard() {
   const totalNetWorth = totalAssets - totalLiabilities;
   const formattedNetWorth = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalNetWorth);
 
-  const illiquidClasses = ['Real estate', 'Farm/ranch', 'VC fund', 'Gold', 'Commodities', 'Bonds/Tbills', 'Sacco/MMF', 'Cash'];
+  const illiquidClasses = ['Real estate', 'Farm/ranch', 'VC fund', 'Startup Equity', 'Gold', 'Commodities', 'Bonds/Tbills', 'Sacco/MMF', 'Cash'];
   const fixedAssetsTotal = assetsData
     ?.filter(a => illiquidClasses.includes(a.asset_class))
     .reduce((sum, a) => sum + Number(a.balance || 0), 0) || 0;
   const formattedFixed = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(fixedAssetsTotal);
 
-  const annualYieldIncome = assetsData
+  // Annual yield income = yield-based + monthly income × 12
+  const yieldBasedIncome = assetsData
     ?.reduce((sum, a) => sum + (Number(a.balance || 0) * Number(a.annual_yield || 0) / 100), 0) || 0;
+  const monthlyIncomeTotal = assetsData
+    ?.reduce((sum, a) => sum + Number(a.monthly_income || 0), 0) || 0;
+  const annualYieldIncome = yieldBasedIncome + (monthlyIncomeTotal * 12);
   const formattedYield = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(annualYieldIncome);
 
   const formattedLiabilities = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalLiabilities);
@@ -91,6 +105,9 @@ export default async function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 p-4 md:p-8">
+
+      {/* ─── LIVE TICKER BAR ─── */}
+      <LiveTicker />
 
       <header className="mb-8 flex items-center justify-between">
         <div>
@@ -136,17 +153,19 @@ export default async function Dashboard() {
           <p className="text-slate-400 text-sm mt-2">From Supabase</p>
         </div>
 
-        {/* Card 3: Annual Yield Income */}
+        {/* Card 3: Annual Passive Income */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-slate-400 font-medium">Annual Yield Income</h3>
+            <h3 className="text-slate-400 font-medium">Annual Passive Income</h3>
             <DollarSign className="text-emerald-500 w-5 h-5" />
           </div>
           <p className="text-2xl md:text-4xl font-bold text-emerald-400">{formattedYield}</p>
           <p className="text-slate-400 text-sm mt-2">
-            {annualInterestCost > 0
-              ? `Net of $${annualInterestCost.toLocaleString('en-US', { maximumFractionDigits: 0 })} interest cost`
-              : 'Dividends, rent, interest'}
+            {monthlyIncomeTotal > 0
+              ? `Includes $${monthlyIncomeTotal.toLocaleString()}/mo from startups/rent`
+              : annualInterestCost > 0
+                ? `Net of $${annualInterestCost.toLocaleString('en-US', { maximumFractionDigits: 0 })} interest cost`
+                : 'Dividends, rent, startup income'}
           </p>
         </div>
 
@@ -174,8 +193,8 @@ export default async function Dashboard() {
           </div>
         )}
 
-        {/* Card 6: Depreciating Assets */}
-        {depreciatingTotal > 0 && (
+        {/* Card 6: Depreciating Assets (or Currency if no depreciation) */}
+        {depreciatingTotal > 0 ? (
           <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-slate-400 font-medium">Depreciating Assets</h3>
@@ -186,9 +205,18 @@ export default async function Dashboard() {
             </p>
             <p className="text-slate-400 text-sm mt-2">Vehicles, equipment</p>
           </div>
+        ) : (
+          <CurrencyToggle kesRate={kesRate} />
         )}
 
       </div>
+
+      {/* ─── Currency toggle if depreciating exists (shows below cards) ─── */}
+      {depreciatingTotal > 0 && (
+        <div className="mb-8 max-w-xs">
+          <CurrencyToggle kesRate={kesRate} />
+        </div>
+      )}
 
       {/* ─── CHARTS & ADD FORMS ─── */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-8">

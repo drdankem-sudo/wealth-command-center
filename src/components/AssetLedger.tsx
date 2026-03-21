@@ -16,6 +16,7 @@ interface LedgerAsset {
   annual_yield: number;
   pending_yield_cash: number;
   target_allocation: number;
+  monthly_income: number;
 }
 
 // --- SUB-COMPONENT: A Single Editable Row ---
@@ -83,6 +84,13 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
       <td className="p-4 text-sm text-amber-400 hidden lg:table-cell">
         {asset.pending_yield_cash
           ? `$${Number(asset.pending_yield_cash).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "-"}
+      </td>
+
+      {/* Monthly Income */}
+      <td className="p-4 text-sm text-emerald-400 hidden lg:table-cell">
+        {asset.monthly_income
+          ? `$${Number(asset.monthly_income).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`
           : "-"}
       </td>
 
@@ -178,6 +186,7 @@ export default function AssetLedger({ assets }: { assets: LedgerAsset[] }) {
                   <th className="p-4 font-medium hidden lg:table-cell">Growth %</th>
                   <th className="p-4 font-medium hidden lg:table-cell">Yield %</th>
                   <th className="p-4 font-medium hidden lg:table-cell">Accrued Yield</th>
+                  <th className="p-4 font-medium hidden lg:table-cell">Monthly Income</th>
                   <th className="p-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
