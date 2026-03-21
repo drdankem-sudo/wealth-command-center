@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation';
 import NewsFeed from '@/components/markets/NewsFeed';
 import FearGreedGauge from '@/components/markets/FearGreedGauge';
 import EarningsCalendar from '@/components/markets/EarningsCalendar';
+import EconomicCalendar from '@/components/markets/EconomicCalendar';
+import TreasuryRates from '@/components/markets/TreasuryRates';
 import CompanyProfile from '@/components/markets/CompanyProfile';
 import LiveTicker from '@/components/LiveTicker';
 
@@ -45,7 +47,7 @@ export default async function MarketsPage() {
               <BarChart3 className="w-6 h-6 text-indigo-400" />
               <h1 className="text-xl md:text-3xl font-bold tracking-tight">Market Intelligence</h1>
             </div>
-            <p className="text-slate-400 mt-1 text-sm">News, sentiment, earnings & company analysis</p>
+            <p className="text-slate-400 mt-1 text-sm">News, sentiment, earnings, macro & company analysis</p>
           </div>
         </div>
         <Link
@@ -56,12 +58,15 @@ export default async function MarketsPage() {
         </Link>
       </header>
 
-      {/* ─── FEAR & GREED GAUGES ─── */}
-      <div className="mb-8">
-        <FearGreedGauge />
+      {/* ─── FEAR & GREED + TREASURY RATES ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div className="lg:col-span-2">
+          <FearGreedGauge />
+        </div>
+        <TreasuryRates />
       </div>
 
-      {/* ─── MAIN GRID: News + Company Profile ─── */}
+      {/* ─── NEWS + COMPANY PROFILE ─── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
         <NewsFeed userTickers={userTickers} />
         <CompanyProfile userTickers={userTickers} />
@@ -70,6 +75,11 @@ export default async function MarketsPage() {
       {/* ─── EARNINGS CALENDAR ─── */}
       <div className="mb-8">
         <EarningsCalendar userTickers={userTickers} />
+      </div>
+
+      {/* ─── ECONOMIC CALENDAR ─── */}
+      <div className="mb-8">
+        <EconomicCalendar />
       </div>
     </div>
   );

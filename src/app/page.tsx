@@ -10,6 +10,8 @@ import LiabilityLedger from '../components/LiabilityLedger';
 import EscapeVelocity from '../components/EscapeVelocity';
 import LiveTicker from '../components/LiveTicker';
 import MetricCards from '../components/MetricCards';
+import PortfolioAnalytics from '../components/PortfolioAnalytics';
+import RebalancingAlerts from '../components/RebalancingAlerts';
 import CurrencyProvider from '../components/CurrencyProvider';
 import LogoutButton from '../components/LogoutButton';
 import { createClient } from '@/utils/supabase-server';
@@ -152,6 +154,23 @@ export default async function Dashboard() {
           <div className="xl:col-span-1 space-y-6">
             <AddAssetForm />
             <AddLiabilityForm />
+          </div>
+        </div>
+
+        {/* ─── PORTFOLIO ANALYTICS + REBALANCING ─── */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+          <div className="xl:col-span-2">
+            <PortfolioAnalytics
+              assets={assetsData || []}
+              history={rawHistoryData || []}
+              totalNetWorth={totalNetWorth}
+            />
+          </div>
+          <div>
+            <RebalancingAlerts
+              assets={assetsData || []}
+              totalNetWorth={totalNetWorth}
+            />
           </div>
         </div>
 
