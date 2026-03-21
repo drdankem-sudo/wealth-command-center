@@ -1,6 +1,6 @@
 // src/app/page.tsx
 import MfaEnroll from '@/components/MfaEnroll';
-import { Settings } from 'lucide-react';
+import { Settings, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import DashboardCharts from '../components/DashboardCharts';
 import AddAssetForm from '../components/AddAssetForm';
@@ -110,8 +110,16 @@ export default async function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/markets"
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-400 hover:text-indigo-400 transition-colors"
+              title="Market Intelligence"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">Markets</span>
+            </Link>
+            <Link
               href="/settings"
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
               title="Vault Settings"
             >
               <Settings className="w-4 h-4" />

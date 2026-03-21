@@ -40,7 +40,7 @@ export async function proxy(request: NextRequest) {
   const url = request.nextUrl.clone();
 
   // 2. If no user and trying to access protected pages, go to /login
-  if (!user && (url.pathname === '/' || url.pathname === '/settings')) {
+  if (!user && (url.pathname === '/' || url.pathname === '/settings' || url.pathname === '/markets')) {
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
@@ -66,5 +66,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/login/mfa', '/settings'],
+  matcher: ['/', '/login', '/login/mfa', '/settings', '/markets'],
 };
