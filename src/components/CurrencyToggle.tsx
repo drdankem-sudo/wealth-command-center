@@ -1,32 +1,11 @@
 // src/components/CurrencyToggle.tsx
 "use client";
 
-import { useEffect, useState } from 'react';
 import { ArrowRightLeft } from 'lucide-react';
+import { useCurrency } from './CurrencyProvider';
 
-interface CurrencyToggleProps {
-  kesRate: number | null;
-}
-
-export default function CurrencyToggle({ kesRate: initialRate }: CurrencyToggleProps) {
-  const [currency, setCurrency] = useState<'USD' | 'KES'>('USD');
-  const [rate, setRate] = useState<number | null>(initialRate);
-
-  // Fetch live rate on mount
-  useEffect(() => {
-    if (initialRate) {
-      setRate(initialRate);
-      return;
-    }
-    fetch('https://api.exchangerate-api.com/v4/latest/USD')
-      .then(r => r.json())
-      .then(data => {
-        if (data?.rates?.KES) setRate(data.rates.KES);
-      })
-      .catch(() => {});
-  }, [initialRate]);
-
-  const toggle = () => setCurrency(c => c === 'USD' ? 'KES' : 'USD');
+export default function CurrencyToggle() {
+  const { currency, rate, toggle } = useCurrency();
 
   return (
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm">
@@ -48,11 +27,9 @@ export default function CurrencyToggle({ kesRate: initialRate }: CurrencyToggleP
         </span>
       </button>
 
-      {rate && (
-        <p className="text-center text-slate-400 text-sm mt-3">
-          1 USD = <span className="text-blue-400 font-bold">KES {rate.toFixed(2)}</span>
-        </p>
-      )}
+      <p className="text-center text-slate-400 text-sm mt-3">
+        1 USD = <span className="text-blue-400 font-bold">KES {rate.toFixed(2)}</span>
+      </p>
 
       <p className="text-center text-slate-600 text-[10px] mt-2 uppercase tracking-wider">
         Live from ExchangeRate-API

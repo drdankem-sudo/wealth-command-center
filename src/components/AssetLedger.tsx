@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { deleteAsset, updateAsset } from '../app/actions';
 import { Trash2, Edit2, X, Check, AlertTriangle } from 'lucide-react';
+import { useCurrency } from './CurrencyProvider';
 
 interface LedgerAsset {
   id: string;
@@ -21,6 +22,7 @@ interface LedgerAsset {
 
 // --- SUB-COMPONENT: A Single Editable Row ---
 function AssetRow({ asset }: { asset: LedgerAsset }) {
+  const { format } = useCurrency();
   const [isEditing, setIsEditing] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -66,13 +68,17 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
             </div>
           )
         ) : (
-          `$${Number(asset.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          format(Number(asset.balance || 0))
         )}
       </td>
 
       {/* Growth % */}
       <td className="p-4 text-sm text-slate-400 hidden lg:table-cell">
-        {asset.annual_growth_rate ? `${asset.annual_growth_rate}%` : "-"}
+        {asset.annual_growth_rate ? (
+          <span className={asset.annual_growth_rate < 0 ? 'text-red-400' : ''}>
+            {asset.annual_growth_rate}%
+          </span>
+        ) : "-"}
       </td>
 
       {/* Yield % */}
@@ -83,14 +89,14 @@ function AssetRow({ asset }: { asset: LedgerAsset }) {
       {/* Accrued Yield */}
       <td className="p-4 text-sm text-amber-400 hidden lg:table-cell">
         {asset.pending_yield_cash
-          ? `$${Number(asset.pending_yield_cash).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          ? format(Number(asset.pending_yield_cash))
           : "-"}
       </td>
 
       {/* Monthly Income */}
       <td className="p-4 text-sm text-emerald-400 hidden lg:table-cell">
         {asset.monthly_income
-          ? `$${Number(asset.monthly_income).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`
+          ? `${format(Number(asset.monthly_income))}/mo`
           : "-"}
       </td>
 
@@ -182,7 +188,7 @@ export default function AssetLedger({ assets }: { assets: LedgerAsset[] }) {
                   <th className="p-4 font-medium">Asset Name</th>
                   <th className="p-4 font-medium hidden sm:table-cell">Ticker</th>
                   <th className="p-4 font-medium hidden sm:table-cell">Shares</th>
-                  <th className="p-4 font-medium">Value ($)</th>
+                  <th className="p-4 font-medium">Value</th>
                   <th className="p-4 font-medium hidden lg:table-cell">Growth %</th>
                   <th className="p-4 font-medium hidden lg:table-cell">Yield %</th>
                   <th className="p-4 font-medium hidden lg:table-cell">Accrued Yield</th>

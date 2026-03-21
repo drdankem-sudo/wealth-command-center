@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { deleteLiability, updateLiability } from '../app/liability-actions';
 import { Trash2, Edit2, X, Check, AlertTriangle } from 'lucide-react';
+import { useCurrency } from './CurrencyProvider';
 
 interface Liability {
   id: string;
@@ -15,6 +16,7 @@ interface Liability {
 }
 
 function LiabilityRow({ liability }: { liability: Liability }) {
+  const { format } = useCurrency();
   const [isEditing, setIsEditing] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [editBalance, setEditBalance] = useState(liability.balance || 0);
@@ -50,7 +52,7 @@ function LiabilityRow({ liability }: { liability: Liability }) {
             />
           </div>
         ) : (
-          `$${Number(liability.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          format(Number(liability.balance || 0))
         )}
       </td>
 
@@ -70,13 +72,13 @@ function LiabilityRow({ liability }: { liability: Liability }) {
             />
           </div>
         ) : (
-          liability.monthly_payment ? `$${Number(liability.monthly_payment).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo` : "-"
+          liability.monthly_payment ? `${format(Number(liability.monthly_payment))}/mo` : "-"
         )}
       </td>
 
       <td className="p-4 text-sm hidden lg:table-cell">
         {annualInterest > 0 ? (
-          <span className="text-red-400">-${annualInterest.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/yr</span>
+          <span className="text-red-400">-{format(annualInterest)}/yr</span>
         ) : "-"}
       </td>
 
