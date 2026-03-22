@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// ─── RATE LIMITER: Protect your wallet ───
+// Max 5 generations per day (resets at midnight UTC)
+const MAX_DAILY_CALLS = 5;
+const callLog: { date: string; count: number } = { date: '', count: 0 };
+
+function checkRateLimit(): { allowed: boolean; remaining: number } {
+  const today = new Date().toISOString().slice(0, 10);
+  if (callLog.date !== today) {
+    callLog.date = today;
+    callLog.count = 0;
+  }
+  if (callLog.count >= MAX_DAILY_CALLS) {
+    return { allowed: false, remaining: 0 };
+  }
+  callLog.count++;
+  return { allowed: true, remaining: MAX_DAILY_CALLS - callLog.count };
+}
+
 interface MarketBriefRequest {
   news: any[];
   economic: any[];
@@ -20,6 +38,28 @@ export async function POST(req: NextRequest) {
             "add ANTHROPIC_API_KEY to your environment variables (.env.local).\n\n" +
             "You can get an API key at https://console.anthropic.com/",
           generatedAt: new Date().toISOString(),
+        },
+        {
+          status: 200,
+          headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+        }
+      );
+    }
+
+    // ─── Rate limit check ───
+    const { allowed, remaining } = checkRateLimit();
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          brief:
+            "**Daily Limit Reached**\n\n" +
+            `You've used all ${MAX_DAILY_CALLS} AI brief generations for today. ` +
+            "The limit resets at midnight UTC.\n\n" +
+            "Your last cached brief is still available — refresh the page to see it.\n\n" +
+            `**Cost protection:** This limit keeps your daily spend under $0.05.`,
+          generatedAt: new Date().toISOString(),
+          rateLimited: true,
+          remaining: 0,
         },
         {
           status: 200,
@@ -67,7 +107,7 @@ export async function POST(req: NextRequest) {
       data.content?.[0]?.text ?? "Unable to extract brief from response.";
 
     return NextResponse.json(
-      { brief, generatedAt: new Date().toISOString() },
+      { brief, generatedAt: new Date().toISOString(), remaining },
       {
         status: 200,
         headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },

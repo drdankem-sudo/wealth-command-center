@@ -89,6 +89,7 @@ export default function MarketBrief({ userTickers }: MarketBriefProps) {
   const [brief, setBrief] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   const generateBrief = useCallback(async (forceRefresh = false) => {
     // Check cache first (unless forcing refresh)
@@ -143,6 +144,7 @@ export default function MarketBrief({ userTickers }: MarketBriefProps) {
 
       setBrief(generatedBrief);
       setCachedBrief(generatedBrief);
+      if (data.remaining !== undefined) setRemaining(data.remaining);
     } catch (err: any) {
       setError(err.message || 'Failed to generate market brief');
     } finally {
@@ -174,16 +176,23 @@ export default function MarketBrief({ userTickers }: MarketBriefProps) {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => generateBrief(true)}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200
-                     bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors
-                     disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Regenerate
-        </button>
+        <div className="flex items-center gap-2">
+          {remaining !== null && (
+            <span className="text-[10px] text-slate-500">
+              {remaining}/5 left today
+            </span>
+          )}
+          <button
+            onClick={() => generateBrief(true)}
+            disabled={loading || remaining === 0}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200
+                       bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Regenerate
+          </button>
+        </div>
       </div>
 
       {/* Content */}
