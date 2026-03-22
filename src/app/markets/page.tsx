@@ -10,6 +10,9 @@ import EconomicCalendar from '@/components/markets/EconomicCalendar';
 import TreasuryRates from '@/components/markets/TreasuryRates';
 import CompanyProfile from '@/components/markets/CompanyProfile';
 import LiveTicker from '@/components/LiveTicker';
+import MarketBrief from '@/components/markets/MarketBrief';
+import InsiderTrading from '@/components/markets/InsiderTrading';
+import MacroDashboard from '@/components/markets/MacroDashboard';
 
 export const revalidate = 60;
 
@@ -58,6 +61,16 @@ export default async function MarketsPage() {
         </Link>
       </header>
 
+      {/* ─── AI MARKET BRIEF ─── */}
+      <div className="mb-8">
+        <MarketBrief userTickers={userTickers} />
+      </div>
+
+      {/* ─── MACRO DASHBOARD ─── */}
+      <div className="mb-8">
+        <MacroDashboard />
+      </div>
+
       {/* ─── FEAR & GREED + TREASURY RATES ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <div className="lg:col-span-2">
@@ -70,6 +83,11 @@ export default async function MarketsPage() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
         <NewsFeed userTickers={userTickers} />
         <CompanyProfile userTickers={userTickers} />
+      </div>
+
+      {/* ─── INSIDER TRADING ─── */}
+      <div className="mb-8">
+        <InsiderTrading userTickers={userTickers} />
       </div>
 
       {/* ─── EARNINGS CALENDAR ─── */}

@@ -66,6 +66,14 @@ export async function GET(request: NextRequest) {
         return NextResponse.json((data?.economicCalendar || []).slice(0, 20));
       }
 
+      // ─── INSIDER TRANSACTIONS ───
+      case 'insider': {
+        const symbol = request.nextUrl.searchParams.get('symbol');
+        if (!symbol) return NextResponse.json({ error: 'symbol required' }, { status: 400 });
+        const data = await finnhub(`/stock/insider-transactions?symbol=${encodeURIComponent(symbol)}`);
+        return NextResponse.json((data?.data || []).slice(0, 20));
+      }
+
       default:
         return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
     }
